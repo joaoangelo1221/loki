@@ -30,7 +30,7 @@ export class RefreshManager {
     return Object.values(this.jobs);
   }
 
-  async startJob({ tabIds, intervalMs, randomize = false, randomMinMs = null, randomMaxMs = null, name }) {
+  async startJob({ tabIds, intervalMs, name }) {
     const normalizedTabIds = [...new Set((tabIds || []).map(Number).filter(Number.isInteger))];
     if (!normalizedTabIds.length) throw new Error('Nenhuma aba válida selecionada.');
     if (intervalMs < 1000 || intervalMs > 24 * 60 * 60 * 1000) {
@@ -45,9 +45,6 @@ export class RefreshManager {
       name: name || `Job ${jobId.slice(-4)}`,
       tabIds: normalizedTabIds,
       intervalMs,
-      randomize,
-      randomMinMs,
-      randomMaxMs,
       status: 'running',
       lastRunAt: null,
       nextRunAt: now + intervalMs
@@ -99,7 +96,7 @@ export class RefreshManager {
     if (!job) return;
 
     job.status = 'running';
-    const nextInterval = this.resolveInterval(job.intervalMs, job.randomize, job.randomMinMs, job.randomMaxMs);
+    const nextInterval = job.intervalMs;
     job.nextRunAt = Date.now() + nextInterval;
 
     for (const tabId of job.tabIds) {
@@ -134,10 +131,9 @@ export class RefreshManager {
 
       await chrome.tabs.reload(tabId);
       job.lastRunAt = Date.now();
-      const nextInterval = this.resolveInterval(job.intervalMs, job.randomize, job.randomMinMs, job.randomMaxMs);
+      const nextInterval = job.intervalMs;
       job.nextRunAt = job.lastRunAt + nextInterval;
 
-      await this.createTabAlarm(tabId, nextInterval);
       await this.persist();
       this.emitChange();
     } catch (error) {
@@ -162,32 +158,20 @@ export class RefreshManager {
     for (const job of this.listJobs()) {
       if (job.status !== 'running') continue;
       for (const tabId of job.tabIds) {
-        const nextInterval = this.resolveInterval(job.intervalMs, job.randomize, job.randomMinMs, job.randomMaxMs);
-        await this.createTabAlarm(tabId, nextInterval);
+        await this.createTabAlarm(tabId, job.intervalMs);
       }
     }
   }
 
   async createTabAlarm(tabId, intervalMs) {
-    const intervalMinutes = Math.max(0.5, intervalMs / 60000);
+    const intervalMinutes = Math.max(1, intervalMs / 1000) / 60;
     await chrome.alarms.create(this.alarmName(tabId), {
-      delayInMinutes: intervalMinutes,
-      periodInMinutes: intervalMinutes
+      delayInMinutes: intervalMinutes
     });
   }
 
   alarmName(tabId) {
     return `refresh_${tabId}`;
-  }
-
-  resolveInterval(intervalMs, randomize, randomMinMs, randomMaxMs) {
-    if (!randomize) return intervalMs;
-
-    const min = Math.max(1000, Number(randomMinMs) || Math.floor(intervalMs * 0.7));
-    const max = Math.min(24 * 60 * 60 * 1000, Number(randomMaxMs) || Math.ceil(intervalMs * 1.3));
-    const lower = Math.min(min, max);
-    const upper = Math.max(min, max);
-    return Math.floor(Math.random() * (upper - lower + 1)) + lower;
   }
 
   buildJobId(name, tabIds) {

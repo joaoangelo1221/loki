@@ -26,32 +26,14 @@
       .muted { color: #bbb; font-size: 11px; }
       .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
       .checkbox { font-size: 12px; display: flex; align-items: center; gap: 6px; }
-      .tooltip {
-        position: relative;
+      .info {
         margin-left: 5px;
-        cursor: pointer;
-        background: #555;
-        color: #fff;
+        background: #444;
+        color: white;
         border-radius: 50%;
         padding: 2px 6px;
         font-size: 10px;
-      }
-      .tooltiptext {
-        visibility: hidden;
-        width: 200px;
-        background-color: #222;
-        color: #fff;
-        text-align: left;
-        border-radius: 6px;
-        padding: 8px;
-        position: absolute;
-        z-index: 1;
-        bottom: 125%;
-        left: 50%;
-        transform: translateX(-50%);
-      }
-      .tooltip:hover .tooltiptext {
-        visibility: visible;
+        cursor: help;
       }
     </style>
   </head>
@@ -91,47 +73,31 @@
 
       <div id="advancedPanel" class="advanced">
         <div class="checkbox">
-          <input type="checkbox" id="randomizeCheck" />
-          <label for="randomizeCheck">Intervalo aleatório</label>
-        </div>
-        <div class="grid2">
-          <input type="number" id="randomMin" placeholder="Mín (s)" min="1" />
-          <input type="number" id="randomMax" placeholder="Máx (s)" min="1" />
+          <input type="checkbox" id="cache" checked />
+          <label for="cache">Cache</label>
+          <span class="info">?</span>
         </div>
         <div class="checkbox">
-          <input type="checkbox" id="cleanCache" checked />
-          <label for="cleanCache">Cache</label>
-          <span class="tooltip">?
-            <span class="tooltiptext">Remove arquivos temporários armazenados pelo navegador.</span>
-          </span>
+          <input type="checkbox" id="cookies" checked />
+          <label for="cookies">Cookies</label>
+          <span class="info">?</span>
         </div>
         <div class="checkbox">
-          <input type="checkbox" id="cleanCookies" checked />
-          <label for="cleanCookies">Cookies</label>
-          <span class="tooltip">?
-            <span class="tooltiptext">Apaga cookies de sessão e persistentes do escopo escolhido.</span>
-          </span>
+          <input type="checkbox" id="localStorage" checked />
+          <label for="localStorage">localStorage</label>
+          <span class="info">?</span>
         </div>
         <div class="checkbox">
-          <input type="checkbox" id="cleanLocalStorage" checked />
-          <label for="cleanLocalStorage">localStorage</label>
-          <span class="tooltip">?
-            <span class="tooltiptext">Remove dados locais salvos por sites neste navegador.</span>
-          </span>
-        </div>
-        <div class="checkbox">
-          <input type="checkbox" id="cleanSessionStorage" checked />
-          <label for="cleanSessionStorage">sessionStorage</label>
-          <span class="tooltip">?
-            <span class="tooltiptext">Limpa armazenamento de sessão via script na aba, sem browsingData.</span>
-          </span>
+          <input type="checkbox" id="sessionStorage" checked />
+          <label for="sessionStorage">sessionStorage</label>
+          <span class="info">?</span>
         </div>
         <div class="row split">
-          <button id="cleanCurrent">Limpar aba</button>
-          <button id="cleanDomain">Limpar domínio</button>
+          <button id="clearTab">Limpar aba</button>
+          <button id="clearDomain">Limpar domínio</button>
         </div>
         <div class="row split">
-          <button id="cleanAll" class="danger">Limpar tudo</button>
+          <button id="clearAll" class="danger">Limpar tudo</button>
           <button id="memoryBtn">Liberar memória</button>
         </div>
       </div>

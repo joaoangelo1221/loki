@@ -48,7 +48,7 @@ async function ensureMemoryAlarm() {
   await chrome.alarms.clear('memory:autoDiscard');
   if (!settings.autoDiscardEnabled) return;
   const intervalMinutes = Math.max(1, Math.min(60 * 24, Number(settings.autoDiscardMinutes) || 60));
-  await chrome.alarms.create('memory:autoDiscard', { periodInMinutes: intervalMinutes });
+  await chrome.alarms.create('memory:autoDiscard', { delayInMinutes: intervalMinutes });
 }
 
 async function runMemoryCleanup(manual = false) {
@@ -79,24 +79,36 @@ function timerKey(tabId) {
 }
 
 async function createRefreshAlarm(tabId, intervalSec) {
+  await startRefresh(tabId, intervalSec);
+}
+
+async function scheduleNext(tabId, intervalSec) {
   const name = `refresh_${tabId}`;
   const safeIntervalSec = Math.max(1, Number(intervalSec) || 1);
   await chrome.alarms.create(name, {
-    delayInMinutes: safeIntervalSec / 60,
-    periodInMinutes: safeIntervalSec / 60
+    delayInMinutes: safeIntervalSec / 60
   });
+}
 
+async function startRefresh(tabId, intervalSec) {
+  const safeIntervalSec = Math.max(1, Number(intervalSec) || 1);
   await chrome.storage.local.set({
     [timerKey(tabId)]: {
       interval: safeIntervalSec,
       nextExecution: Date.now() + safeIntervalSec * 1000
     }
   });
+  await scheduleNext(tabId, safeIntervalSec);
 }
 
 async function removeRefreshTimer(tabId) {
+  await stopRefresh(tabId);
+}
+
+async function stopRefresh(tabId) {
   await chrome.alarms.clear(`refresh_${tabId}`);
   await chrome.storage.local.remove(timerKey(tabId));
+  await chrome.action.setBadgeText({ text: '' });
 }
 
 async function syncTimersFromJobs() {
@@ -133,7 +145,7 @@ async function restoreTimers() {
         const tabId = Number.parseInt(key.split('_')[1], 10);
         const data = items[key];
         if (!Number.isInteger(tabId) || !data?.interval) return;
-        await createRefreshAlarm(tabId, data.interval);
+        await scheduleNext(tabId, data.interval);
       })
   );
 }
@@ -197,6 +209,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   try {
     if (alarm.name === 'memory:autoDiscard') {
       await runMemoryCleanup(false);
+      await ensureMemoryAlarm();
       return;
     }
     if (!alarm.name.startsWith('refresh_')) return;
@@ -219,8 +232,11 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     const timerData = await chrome.storage.local.get(timerKey(tabId));
     const entry = timerData[timerKey(tabId)];
     if (entry?.interval) {
+      await scheduleNext(tabId, entry.interval);
       entry.nextExecution = Date.now() + entry.interval * 1000;
       await chrome.storage.local.set({ [timerKey(tabId)]: entry });
+    } else {
+      await chrome.alarms.clear(alarm.name);
     }
   } catch (error) {
     console.error('Erro no processamento do alarme:', error);
