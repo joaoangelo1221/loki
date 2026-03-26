@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart Tab Auto Manager</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 0; background: #121212; color: #f2f2f2; width: 360px; }
+      .container { padding: 12px; }
+      h1 { font-size: 16px; margin: 0 0 10px; }
+      h2 { font-size: 13px; margin: 12px 0 6px; color: #9ad3ff; }
+      .row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+      input, select, button { border-radius: 6px; border: 1px solid #333; background: #1f1f1f; color: #fff; padding: 8px; }
+      button { cursor: pointer; }
+      button.primary { background: #2c8dff; border: none; }
+      button.danger { background: #ff4d4f; border: none; }
+      button.small { padding: 4px 6px; font-size: 12px; }
+      .split > * { flex: 1; }
+      .advanced { border: 1px solid #333; border-radius: 8px; padding: 8px; display: none; }
+      .advanced.open { display: block; }
+      .tabs-list { max-height: 100px; overflow: auto; background: #1a1a1a; border-radius: 8px; padding: 6px; }
+      .tabs-list label { display: block; font-size: 12px; margin: 4px 0; }
+      .status { font-size: 12px; min-height: 16px; }
+      .jobs { max-height: 170px; overflow-y: auto; border-top: 1px solid #2a2a2a; margin-top: 10px; padding-top: 8px; }
+      .job { border: 1px solid #2b2b2b; border-radius: 8px; padding: 6px; margin-bottom: 6px; }
+      .muted { color: #bbb; font-size: 11px; }
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+      .checkbox { font-size: 12px; display: flex; align-items: center; gap: 6px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Smart Tab Auto Manager</h1>
+
+      <h2>Auto-Refresh</h2>
+      <div class="row split">
+        <input type="number" id="intervalValue" min="1" max="86400" value="30" />
+        <select id="intervalUnit">
+          <option value="seconds">segundos</option>
+          <option value="minutes">minutos</option>
+          <option value="hours">horas</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <select id="scopeSelect" style="flex: 1">
+          <option value="current">Aba atual</option>
+          <option value="domain">Mesmo domínio</option>
+          <option value="selected">Múltiplas abas selecionadas</option>
+          <option value="all">Todas as abas</option>
+        </select>
+      </div>
+
+      <div id="selectedTabsContainer" class="tabs-list" style="display:none"></div>
+
+      <div class="row split">
+        <button id="startBtn" class="primary">Iniciar</button>
+        <button id="stopAllBtn" class="danger">Parar todos</button>
+      </div>
+
+      <div class="row">
+        <button id="advancedToggle">Opções avançadas</button>
+      </div>
+
+      <div id="advancedPanel" class="advanced">
+        <div class="checkbox">
+          <input type="checkbox" id="randomizeCheck" />
+          <label for="randomizeCheck">Intervalo aleatório</label>
+        </div>
+        <div class="grid2">
+          <input type="number" id="randomMin" placeholder="Mín (s)" min="1" />
+          <input type="number" id="randomMax" placeholder="Máx (s)" min="1" />
+        </div>
+        <div class="checkbox">
+          <input type="checkbox" id="cleanCache" checked />
+          <label for="cleanCache">Cache</label>
+        </div>
+        <div class="checkbox">
+          <input type="checkbox" id="cleanCookies" checked />
+          <label for="cleanCookies">Cookies</label>
+        </div>
+        <div class="checkbox">
+          <input type="checkbox" id="cleanLocalStorage" checked />
+          <label for="cleanLocalStorage">localStorage</label>
+        </div>
+        <div class="checkbox">
+          <input type="checkbox" id="cleanSessionStorage" checked />
+          <label for="cleanSessionStorage">sessionStorage</label>
+        </div>
+        <div class="row split">
+          <button id="cleanCurrent">Limpar aba</button>
+          <button id="cleanDomain">Limpar domínio</button>
+        </div>
+        <div class="row split">
+          <button id="cleanAll" class="danger">Limpar tudo</button>
+          <button id="memoryBtn">Liberar memória</button>
+        </div>
+      </div>
+
+      <div id="status" class="status"></div>
+
+      <div>
+        <h2>Status de timers</h2>
+        <div id="jobs" class="jobs"></div>
+      </div>
+    </div>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
