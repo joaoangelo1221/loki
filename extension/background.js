@@ -71,7 +71,8 @@ async function removeRefreshTimer(tabId) {
 async function stopRefresh(tabId) {
   await chrome.alarms.clear(`refresh_${tabId}`);
   await chrome.storage.local.remove(timerKey(tabId));
-  await chrome.action.setBadgeText({ text: '' });
+  await chrome.action.setBadgeText({ text: '', tabId });
+  await updateBadgeForActiveTab();
 }
 
 async function syncTimersFromJobs() {
@@ -113,19 +114,30 @@ async function restoreTimers() {
   );
 }
 
-async function updateBadgeCountdown() {
-  const items = await chrome.storage.local.get(null);
-  const timers = Object.keys(items).filter((key) => key.startsWith(TIMER_PREFIX));
+async function updateBadgeForActiveTab() {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tabs.length) return;
 
-  if (timers.length === 0) {
-    await chrome.action.setBadgeText({ text: '' });
+  const tabId = tabs[0]?.id;
+  if (!Number.isInteger(tabId)) return;
+
+  const data = await chrome.storage.local.get(timerKey(tabId));
+  const timer = data[timerKey(tabId)];
+
+  if (!timer) {
+    await chrome.action.setBadgeText({ text: '', tabId });
     return;
   }
 
-  const timer = items[timers[0]];
   const remaining = Math.max(0, Math.floor((timer.nextExecution - Date.now()) / 1000));
-  await chrome.action.setBadgeText({ text: remaining.toString() });
-  await chrome.action.setBadgeBackgroundColor({ color: '#FF0000' });
+  await chrome.action.setBadgeText({
+    text: remaining.toString(),
+    tabId
+  });
+  await chrome.action.setBadgeBackgroundColor({
+    color: '#FF0000',
+    tabId
+  });
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -282,5 +294,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 init().catch((error) => console.error('Erro na inicialização:', error));
 setInterval(() => {
-  updateBadgeCountdown().catch((error) => console.warn('Falha ao atualizar badge:', error));
+  updateBadgeForActiveTab().catch((error) => console.warn('Falha ao atualizar badge:', error));
 }, BADGE_TICK_MS);
+
+chrome.tabs.onActivated.addListener(() => {
+  updateBadgeForActiveTab().catch((error) => console.warn('Falha ao sincronizar badge ao ativar aba:', error));
+});
+
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
+  if (changeInfo.status === 'complete') {
+    updateBadgeForActiveTab().catch((error) => console.warn('Falha ao sincronizar badge ao atualizar aba:', error));
+  }
+});
