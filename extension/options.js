@@ -2,9 +2,6 @@ const elements = {
   defaultInterval: document.getElementById('defaultInterval'),
   progressiveDelay: document.getElementById('progressiveDelay'),
   pauseBackgroundRefresh: document.getElementById('pauseBackgroundRefresh'),
-  autoDiscardEnabled: document.getElementById('autoDiscardEnabled'),
-  autoDiscardMinutes: document.getElementById('autoDiscardMinutes'),
-  includePinnedDiscard: document.getElementById('includePinnedDiscard'),
   saveBtn: document.getElementById('saveBtn'),
   status: document.getElementById('status')
 };
@@ -23,9 +20,6 @@ async function loadState() {
     elements.defaultInterval.value = Math.max(1, Math.round((settings.defaultIntervalMs || 30000) / 1000));
     elements.progressiveDelay.value = settings.progressiveDelayMs ?? 250;
     elements.pauseBackgroundRefresh.checked = !!settings.pauseBackgroundRefresh;
-    elements.autoDiscardEnabled.checked = !!settings.autoDiscardEnabled;
-    elements.autoDiscardMinutes.value = settings.autoDiscardMinutes ?? 60;
-    elements.includePinnedDiscard.checked = !!settings.includePinnedDiscard;
   } catch (error) {
     throw new Error(error?.message || 'Falha ao carregar estado.');
   }
@@ -36,10 +30,7 @@ async function saveSettings() {
     const payload = {
       defaultIntervalMs: Math.max(1, Number(elements.defaultInterval.value || 30)) * 1000,
       progressiveDelayMs: Math.max(0, Number(elements.progressiveDelay.value || 0)),
-      pauseBackgroundRefresh: elements.pauseBackgroundRefresh.checked,
-      autoDiscardEnabled: elements.autoDiscardEnabled.checked,
-      autoDiscardMinutes: Math.max(1, Number(elements.autoDiscardMinutes.value || 60)),
-      includePinnedDiscard: elements.includePinnedDiscard.checked
+      pauseBackgroundRefresh: elements.pauseBackgroundRefresh.checked
     };
 
     const response = await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', payload });
