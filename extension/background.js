@@ -1,0 +1,179 @@
+import { RefreshManager } from './utils/refreshManager.js';
+import { TabManager } from './utils/tabManager.js';
+import { DataCleaner } from './utils/dataCleaner.js';
+import { MemoryManager } from './utils/memoryManager.js';
+
+const SETTINGS_KEY = 'globalSettings';
+const MEMORY_KEY = 'memoryState';
+
+const defaultSettings = {
+  defaultIntervalMs: 30000,
+  progressiveDelayMs: 250,
+  pauseBackgroundRefresh: false,
+  autoDiscardEnabled: false,
+  autoDiscardMinutes: 60,
+  includePinnedDiscard: false
+};
+
+let settings = { ...defaultSettings };
+const memoryManager = new MemoryManager();
+const refreshManager = new RefreshManager({
+  onStateChanged: (jobs) => broadcastState(jobs),
+  getSettings: () => settings
+});
+
+async function init() {
+  const stored = await chrome.storage.local.get([SETTINGS_KEY, MEMORY_KEY]);
+  settings = { ...defaultSettings, ...(stored[SETTINGS_KEY] || {}) };
+  memoryManager.hydrate(stored[MEMORY_KEY]?.lastActiveByTab || {});
+  await refreshManager.hydrate();
+  await ensureMemoryAlarm();
+}
+
+async function saveSettings(nextSettings) {
+  settings = { ...settings, ...nextSettings };
+  await chrome.storage.local.set({ [SETTINGS_KEY]: settings });
+  await ensureMemoryAlarm();
+}
+
+async function saveMemoryState() {
+  await chrome.storage.local.set({
+    [MEMORY_KEY]: { lastActiveByTab: memoryManager.exportState() }
+  });
+}
+
+async function ensureMemoryAlarm() {
+  await chrome.alarms.clear('memory:autoDiscard');
+  if (!settings.autoDiscardEnabled) return;
+  const intervalMinutes = Math.max(1, Math.min(60 * 24, Number(settings.autoDiscardMinutes) || 60));
+  await chrome.alarms.create('memory:autoDiscard', { periodInMinutes: intervalMinutes });
+}
+
+async function runMemoryCleanup(manual = false) {
+  const threshold = Math.max(1, Number(settings.autoDiscardMinutes) || 60);
+  const discardedTabIds = await memoryManager.discardInactiveTabs(threshold, {
+    includePinned: settings.includePinnedDiscard
+  });
+  if (manual || discardedTabIds.length) {
+    broadcastEvent({ type: 'MEMORY_CLEANUP_DONE', discardedTabIds });
+  }
+  return discardedTabIds;
+}
+
+function broadcastEvent(message) {
+  chrome.runtime.sendMessage(message).catch(() => {});
+}
+
+function broadcastState(jobs = refreshManager.getCountdowns()) {
+  chrome.runtime.sendMessage({
+    type: 'REFRESH_STATE',
+    jobs,
+    settings
+  }).catch(() => {});
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.storage.local.set({ [SETTINGS_KEY]: settings }).catch(() => {});
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  init().catch((error) => console.error('Erro no startup:', error));
+});
+
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
+  memoryManager.markTabActive(activeInfo.tabId);
+  await saveMemoryState();
+});
+
+chrome.tabs.onRemoved.addListener(async (tabId) => {
+  memoryManager.removeTab(tabId);
+  await saveMemoryState();
+});
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
+  if (changeInfo.status === 'complete') {
+    memoryManager.markTabActive(tabId);
+    await saveMemoryState();
+  }
+});
+
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  try {
+    if (alarm.name === 'memory:autoDiscard') {
+      await runMemoryCleanup(false);
+      return;
+    }
+    await refreshManager.handleAlarm(alarm);
+  } catch (error) {
+    console.error('Erro no processamento do alarme:', error);
+  }
+});
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  (async () => {
+    try {
+      switch (message?.type) {
+        case 'GET_STATE': {
+          const currentTab = await TabManager.getCurrentTab();
+          const allTabs = await TabManager.listTabs({ currentWindow: true });
+          sendResponse({
+            ok: true,
+            jobs: refreshManager.getCountdowns(),
+            settings,
+            currentTab,
+            tabs: allTabs
+          });
+          break;
+        }
+        case 'START_REFRESH': {
+          const job = await refreshManager.startJob(message.payload);
+          sendResponse({ ok: true, job });
+          break;
+        }
+        case 'STOP_REFRESH': {
+          await refreshManager.stopJob(message.payload.jobId);
+          sendResponse({ ok: true });
+          break;
+        }
+        case 'RESTART_REFRESH': {
+          await refreshManager.restartJob(message.payload.jobId);
+          sendResponse({ ok: true });
+          break;
+        }
+        case 'REMOVE_REFRESH': {
+          await refreshManager.removeJob(message.payload.jobId);
+          sendResponse({ ok: true });
+          break;
+        }
+        case 'GET_SCOPE_TABS': {
+          const tabIds = await TabManager.resolveScopeTabs(message.payload.scope, message.payload.selectedTabIds);
+          sendResponse({ ok: true, tabIds });
+          break;
+        }
+        case 'CLEAN_DATA': {
+          const result = await DataCleaner.clean(message.payload.scope, message.payload.types);
+          sendResponse({ ok: true, result });
+          break;
+        }
+        case 'RUN_MEMORY_CLEANUP': {
+          const discardedTabIds = await runMemoryCleanup(true);
+          sendResponse({ ok: true, discardedTabIds });
+          break;
+        }
+        case 'SAVE_SETTINGS': {
+          await saveSettings(message.payload);
+          sendResponse({ ok: true, settings });
+          break;
+        }
+        default:
+          sendResponse({ ok: false, error: 'Ação não reconhecida.' });
+      }
+    } catch (error) {
+      sendResponse({ ok: false, error: error?.message || String(error) });
+    }
+  })();
+
+  return true;
+});
+
+init().catch((error) => console.error('Erro na inicialização:', error));
