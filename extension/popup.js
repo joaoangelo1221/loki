@@ -43,6 +43,17 @@ async function sendMessage(type, payload = {}) {
   return response;
 }
 
+async function sendRefreshStartAction(tabIds, intervalSec, name) {
+  const response = await chrome.runtime.sendMessage({
+    action: 'start_refresh',
+    tabIds,
+    interval: intervalSec,
+    name
+  });
+  if (!response?.ok) throw new Error(response?.error || 'Erro desconhecido');
+  return response;
+}
+
 function renderTabsSelection(tabs) {
   if (elements.scopeSelect.value !== 'selected') {
     elements.selectedTabsContainer.style.display = 'none';
@@ -141,15 +152,14 @@ elements.startBtn.addEventListener('click', async () => {
     const scope = elements.scopeSelect.value;
     const selectedTabIds = scope === 'selected' ? getSelectedTabIds() : [];
     const scopeTabsRes = await sendMessage('GET_SCOPE_TABS', { scope, selectedTabIds });
+    const targetTabIds = scopeTabsRes.tabIds || [];
 
-    await sendMessage('START_REFRESH', {
-      tabIds: scopeTabsRes.tabIds,
-      intervalMs,
-      randomize: elements.randomizeCheck.checked,
-      randomMinMs: Number(elements.randomMin.value || 0) * 1000,
-      randomMaxMs: Number(elements.randomMax.value || 0) * 1000,
-      name: scope
-    });
+    if (!targetTabIds.length) {
+      throw new Error('Nenhuma aba encontrada para o escopo selecionado.');
+    }
+
+    const intervalSec = Math.max(1, Math.round(intervalMs / 1000));
+    await sendRefreshStartAction(targetTabIds, intervalSec, scope);
 
     setStatus('Auto-refresh iniciado.');
     await refreshState();
@@ -174,6 +184,14 @@ elements.advancedToggle.addEventListener('click', () => {
 });
 
 async function runClean(scope) {
+  if (
+    !confirm(
+      'Tem certeza que deseja executar esta ação? Esta operação pode remover dados importantes.'
+    )
+  ) {
+    return;
+  }
+
   try {
     const types = {
       cache: elements.cleanCache.checked,
@@ -193,6 +211,14 @@ elements.cleanDomain.addEventListener('click', () => runClean('domain'));
 elements.cleanAll.addEventListener('click', () => runClean('all'));
 
 elements.memoryBtn.addEventListener('click', async () => {
+  if (
+    !confirm(
+      'Tem certeza que deseja executar esta ação? Esta operação pode remover dados importantes.'
+    )
+  ) {
+    return;
+  }
+
   try {
     const res = await sendMessage('RUN_MEMORY_CLEANUP');
     setStatus(`Memória liberada. Abas descartadas: ${res.discardedTabIds.length}`);

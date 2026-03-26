@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Smart Tab Auto Manager</title>
+    <title>Loki</title>
     <style>
       body { font-family: Arial, sans-serif; margin: 0; background: #121212; color: #f2f2f2; width: 360px; }
       .container { padding: 12px; }
@@ -26,11 +26,38 @@
       .muted { color: #bbb; font-size: 11px; }
       .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
       .checkbox { font-size: 12px; display: flex; align-items: center; gap: 6px; }
+      .tooltip {
+        position: relative;
+        margin-left: 5px;
+        cursor: pointer;
+        background: #555;
+        color: #fff;
+        border-radius: 50%;
+        padding: 2px 6px;
+        font-size: 10px;
+      }
+      .tooltiptext {
+        visibility: hidden;
+        width: 200px;
+        background-color: #222;
+        color: #fff;
+        text-align: left;
+        border-radius: 6px;
+        padding: 8px;
+        position: absolute;
+        z-index: 1;
+        bottom: 125%;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+      .tooltip:hover .tooltiptext {
+        visibility: visible;
+      }
     </style>
   </head>
   <body>
     <div class="container">
-      <h1>Smart Tab Auto Manager</h1>
+      <h1>Loki</h1>
 
       <h2>Auto-Refresh</h2>
       <div class="row split">
@@ -74,18 +101,30 @@
         <div class="checkbox">
           <input type="checkbox" id="cleanCache" checked />
           <label for="cleanCache">Cache</label>
+          <span class="tooltip">?
+            <span class="tooltiptext">Remove arquivos temporários armazenados pelo navegador.</span>
+          </span>
         </div>
         <div class="checkbox">
           <input type="checkbox" id="cleanCookies" checked />
           <label for="cleanCookies">Cookies</label>
+          <span class="tooltip">?
+            <span class="tooltiptext">Apaga cookies de sessão e persistentes do escopo escolhido.</span>
+          </span>
         </div>
         <div class="checkbox">
           <input type="checkbox" id="cleanLocalStorage" checked />
           <label for="cleanLocalStorage">localStorage</label>
+          <span class="tooltip">?
+            <span class="tooltiptext">Remove dados locais salvos por sites neste navegador.</span>
+          </span>
         </div>
         <div class="checkbox">
           <input type="checkbox" id="cleanSessionStorage" checked />
           <label for="cleanSessionStorage">sessionStorage</label>
+          <span class="tooltip">?
+            <span class="tooltiptext">Limpa armazenamento de sessão via script na aba, sem browsingData.</span>
+          </span>
         </div>
         <div class="row split">
           <button id="cleanCurrent">Limpar aba</button>
