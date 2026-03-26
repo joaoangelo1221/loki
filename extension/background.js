@@ -1,69 +1,32 @@
 import { RefreshManager } from './utils/refreshManager.js';
 import { TabManager } from './utils/tabManager.js';
 import { DataCleaner } from './utils/dataCleaner.js';
-import { MemoryManager } from './utils/memoryManager.js';
 
 const SETTINGS_KEY = 'globalSettings';
-const MEMORY_KEY = 'memoryState';
 const TIMER_PREFIX = 'timer_';
 const BADGE_TICK_MS = 1000;
 
 const defaultSettings = {
   defaultIntervalMs: 30000,
   progressiveDelayMs: 250,
-  pauseBackgroundRefresh: false,
-  autoDiscardEnabled: false,
-  autoDiscardMinutes: 60,
-  includePinnedDiscard: false
+  pauseBackgroundRefresh: false
 };
 
 let settings = { ...defaultSettings };
-const memoryManager = new MemoryManager();
 const refreshManager = new RefreshManager({
   onStateChanged: (jobs) => broadcastState(jobs),
   getSettings: () => settings
 });
 
 async function init() {
-  const stored = await chrome.storage.local.get([SETTINGS_KEY, MEMORY_KEY]);
+  const stored = await chrome.storage.local.get([SETTINGS_KEY]);
   settings = { ...defaultSettings, ...(stored[SETTINGS_KEY] || {}) };
-  memoryManager.hydrate(stored[MEMORY_KEY]?.lastActiveByTab || {});
   await refreshManager.hydrate();
-  await ensureMemoryAlarm();
 }
 
 async function saveSettings(nextSettings) {
   settings = { ...settings, ...nextSettings };
   await chrome.storage.local.set({ [SETTINGS_KEY]: settings });
-  await ensureMemoryAlarm();
-}
-
-async function saveMemoryState() {
-  await chrome.storage.local.set({
-    [MEMORY_KEY]: { lastActiveByTab: memoryManager.exportState() }
-  });
-}
-
-async function ensureMemoryAlarm() {
-  await chrome.alarms.clear('memory:autoDiscard');
-  if (!settings.autoDiscardEnabled) return;
-  const intervalMinutes = Math.max(1, Math.min(60 * 24, Number(settings.autoDiscardMinutes) || 60));
-  await chrome.alarms.create('memory:autoDiscard', { delayInMinutes: intervalMinutes });
-}
-
-async function runMemoryCleanup(manual = false) {
-  const threshold = Math.max(1, Number(settings.autoDiscardMinutes) || 60);
-  const discardedTabIds = await memoryManager.discardInactiveTabs(threshold, {
-    includePinned: settings.includePinnedDiscard
-  });
-  if (manual || discardedTabIds.length) {
-    broadcastEvent({ type: 'MEMORY_CLEANUP_DONE', discardedTabIds });
-  }
-  return discardedTabIds;
-}
-
-function broadcastEvent(message) {
-  chrome.runtime.sendMessage(message).catch(() => {});
 }
 
 function broadcastState(jobs = refreshManager.getCountdowns()) {
@@ -188,30 +151,8 @@ chrome.runtime.onStartup.addListener(() => {
   })();
 });
 
-chrome.tabs.onActivated.addListener(async (activeInfo) => {
-  memoryManager.markTabActive(activeInfo.tabId);
-  await saveMemoryState();
-});
-
-chrome.tabs.onRemoved.addListener(async (tabId) => {
-  memoryManager.removeTab(tabId);
-  await saveMemoryState();
-});
-
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
-  if (changeInfo.status === 'complete') {
-    memoryManager.markTabActive(tabId);
-    await saveMemoryState();
-  }
-});
-
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   try {
-    if (alarm.name === 'memory:autoDiscard') {
-      await runMemoryCleanup(false);
-      await ensureMemoryAlarm();
-      return;
-    }
     if (!alarm.name.startsWith('refresh_')) return;
     const tabId = Number.parseInt(alarm.name.split('_')[1], 10);
     if (!Number.isInteger(tabId)) return;
@@ -321,11 +262,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         case 'CLEAN_DATA': {
           const result = await DataCleaner.clean(message.payload.scope, message.payload.types);
           sendResponse({ ok: true, result });
-          break;
-        }
-        case 'RUN_MEMORY_CLEANUP': {
-          const discardedTabIds = await runMemoryCleanup(true);
-          sendResponse({ ok: true, discardedTabIds });
           break;
         }
         case 'SAVE_SETTINGS': {

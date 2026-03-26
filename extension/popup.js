@@ -14,7 +14,6 @@ const elements = {
   clearTab: document.getElementById('clearTab'),
   clearDomain: document.getElementById('clearDomain'),
   clearAll: document.getElementById('clearAll'),
-  memoryBtn: document.getElementById('memoryBtn'),
   status: document.getElementById('status'),
   jobs: document.getElementById('jobs')
 };
@@ -100,6 +99,7 @@ function buildExplanation(scope) {
 }
 
 function updateCleanTooltips() {
+  // NÃO ALTERAR TOOLTIP ESTÁTICO (info-static)
   elements.clearTab.title = buildExplanation('aba atual');
   elements.clearDomain.title = buildExplanation('domínio atual');
   elements.clearAll.title = buildExplanation('todo o navegador');
@@ -229,30 +229,10 @@ elements.clearTab.addEventListener('click', () => runClean('current'));
 elements.clearDomain.addEventListener('click', () => runClean('domain'));
 elements.clearAll.addEventListener('click', () => runClean('all'));
 
-elements.memoryBtn.addEventListener('click', async () => {
-  if (
-    !confirm(
-      'Tem certeza que deseja executar esta ação? Esta operação pode remover dados importantes.'
-    )
-  ) {
-    return;
-  }
-
-  try {
-    const res = await sendMessage('RUN_MEMORY_CLEANUP');
-    setStatus(`Memória liberada. Abas descartadas: ${res.discardedTabIds.length}`);
-  } catch (error) {
-    setStatus(error.message, true);
-  }
-});
-
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === 'REFRESH_STATE' && message.jobs) {
     currentState.jobs = message.jobs;
     renderJobs(message.jobs);
-  }
-  if (message?.type === 'MEMORY_CLEANUP_DONE') {
-    setStatus(`Auto limpeza de memória: ${message.discardedTabIds.length} aba(s).`);
   }
 });
 

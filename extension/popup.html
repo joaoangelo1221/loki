@@ -26,7 +26,7 @@
       .muted { color: #bbb; font-size: 11px; }
       .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
       .checkbox { font-size: 12px; display: flex; align-items: center; gap: 6px; }
-      .info {
+      .info-static {
         margin-left: 5px;
         background: #444;
         color: white;
@@ -75,30 +75,29 @@
         <div class="checkbox">
           <input type="checkbox" id="cache" checked />
           <label for="cache">Cache</label>
-          <span class="info">?</span>
+          <span class="info-static" title="Remove arquivos temporários armazenados pelo navegador para carregamento mais rápido de páginas.">?</span>
         </div>
         <div class="checkbox">
           <input type="checkbox" id="cookies" checked />
           <label for="cookies">Cookies</label>
-          <span class="info">?</span>
+          <span class="info-static" title="Remove dados de sessão e login armazenados pelos sites, podendo desconectar contas.">?</span>
         </div>
         <div class="checkbox">
           <input type="checkbox" id="localStorage" checked />
           <label for="localStorage">localStorage</label>
-          <span class="info">?</span>
+          <span class="info-static" title="Remove dados persistentes armazenados localmente por sites.">?</span>
         </div>
         <div class="checkbox">
           <input type="checkbox" id="sessionStorage" checked />
           <label for="sessionStorage">sessionStorage</label>
-          <span class="info">?</span>
+          <span class="info-static" title="Remove dados temporários da aba atual, perdidos ao fechar a aba.">?</span>
         </div>
         <div class="row split">
           <button id="clearTab">Limpar aba</button>
           <button id="clearDomain">Limpar domínio</button>
         </div>
-        <div class="row split">
-          <button id="clearAll" class="danger">Limpar tudo</button>
-          <button id="memoryBtn">Liberar memória</button>
+        <div class="row">
+          <button id="clearAll" class="danger" style="width:100%">Limpar tudo</button>
         </div>
       </div>
 
