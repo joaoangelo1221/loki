@@ -73,7 +73,14 @@ function broadcastState(jobs = refreshManager.getCountdowns()) {
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.set({ [SETTINGS_KEY]: settings }).catch(() => {});
+  (async () => {
+    try {
+      await chrome.storage.local.set({ [SETTINGS_KEY]: settings });
+      await init();
+    } catch (error) {
+      console.error('Erro no onInstalled:', error);
+    }
+  })();
 });
 
 chrome.runtime.onStartup.addListener(() => {

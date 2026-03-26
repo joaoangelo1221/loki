@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Smart Tab Auto Manager",
+  "name": "Loki",
   "description": "Automação de atualização de páginas, manutenção de dados e otimização de abas.",
   "version": "1.0.0",
   "permissions": [
@@ -18,7 +18,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Smart Tab Auto Manager",
+    "default_title": "Loki",
     "default_popup": "popup.html"
   },
   "options_page": "options.html"

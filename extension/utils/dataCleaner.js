@@ -8,44 +8,32 @@ export class DataCleaner {
     return {
       cache: !!types.cache,
       cookies: !!types.cookies,
-      localStorage: !!types.localStorage,
-      sessionStorage: !!types.sessionStorage
+      localStorage: !!types.localStorage
     };
   }
 
   static async clean(scope, types = { cache: true, cookies: true, localStorage: true, sessionStorage: true }) {
     const dataToRemove = this.buildRemovalOptions(types);
+    const targetTabs = await this.resolveTargetTabs(scope);
+    const targetOrigins = this.collectOrigins(targetTabs);
 
     if (scope === 'all') {
       await chrome.browsingData.remove({ since: 0 }, dataToRemove);
+      if (types.sessionStorage) {
+        await this.clearSessionStorageForTabs(targetTabs);
+      }
       return { scope, success: true };
     }
 
-    const currentTab = await TabManager.getCurrentTab();
-    const originTypes = new Set();
-
-    if (scope === 'current' && currentTab?.url) {
-      const origin = this.extractOrigin(currentTab.url);
-      if (origin) originTypes.add(origin);
-    }
-
-    if (scope === 'domain' && currentTab?.url) {
-      const domain = TabManager.getDomainFromUrl(currentTab.url);
-      if (domain) {
-        const tabs = await TabManager.getTabsByDomain(domain);
-        tabs.forEach((tab) => {
-          const origin = this.extractOrigin(tab.url);
-          if (origin) originTypes.add(origin);
-        });
-      }
-    }
-
-    if (!originTypes.size) {
+    if (!targetOrigins.length) {
       throw new Error('Não foi possível determinar origens para o escopo selecionado.');
     }
 
-    await chrome.browsingData.remove({ origins: [...originTypes] }, dataToRemove);
-    return { scope, success: true, origins: [...originTypes] };
+    await chrome.browsingData.remove({ origins: targetOrigins }, dataToRemove);
+    if (types.sessionStorage) {
+      await this.clearSessionStorageForTabs(targetTabs);
+    }
+    return { scope, success: true, origins: targetOrigins };
   }
 
   static extractOrigin(url) {
@@ -56,5 +44,47 @@ export class DataCleaner {
     } catch {
       return null;
     }
+  }
+
+  static async resolveTargetTabs(scope) {
+    if (scope === 'all') return TabManager.listTabs({});
+
+    const currentTab = await TabManager.getCurrentTab();
+    if (!currentTab?.id) return [];
+
+    if (scope === 'current') return [currentTab];
+
+    if (scope === 'domain') {
+      const domain = TabManager.getDomainFromUrl(currentTab.url);
+      if (!domain) return [currentTab];
+      return TabManager.getTabsByDomain(domain);
+    }
+
+    return [currentTab];
+  }
+
+  static collectOrigins(tabs = []) {
+    const origins = new Set();
+    tabs.forEach((tab) => {
+      const origin = this.extractOrigin(tab.url);
+      if (origin) origins.add(origin);
+    });
+    return [...origins];
+  }
+
+  static async clearSessionStorageForTabs(tabs = []) {
+    const clearableTabs = tabs.filter((tab) => Number.isInteger(tab?.id) && /^https?:/.test(tab.url || ''));
+    await Promise.all(
+      clearableTabs.map(async (tab) => {
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: () => sessionStorage.clear()
+          });
+        } catch (error) {
+          console.warn(`Falha ao limpar sessionStorage na aba ${tab.id}:`, error);
+        }
+      })
+    );
   }
 }

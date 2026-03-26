@@ -1,37 +1,33 @@
 import { TabManager } from './tabManager.js';
 
 const JOBS_KEY = 'refreshJobs';
+const TIMERS_KEY = 'timers';
 
 /**
- * Gerencia jobs de atualização com persistência e fila.
+ * Gerencia jobs de atualização com persistência via alarms.
  */
 export class RefreshManager {
   constructor({ onStateChanged, getSettings }) {
     this.jobs = {};
-    this.tickTimer = null;
-    this.pendingByTab = new Map();
-    this.processingQueue = false;
+    this.timerToJob = {};
     this.onStateChanged = onStateChanged;
     this.getSettings = getSettings;
   }
 
   async hydrate() {
-    const { [JOBS_KEY]: persistedJobs = {} } = await chrome.storage.local.get(JOBS_KEY);
-    this.jobs = persistedJobs;
-    this.ensureTicking();
+    const stored = await chrome.storage.local.get([JOBS_KEY, TIMERS_KEY]);
+    this.jobs = stored[JOBS_KEY] || {};
+    this.timerToJob = stored[TIMERS_KEY] || {};
     await this.restoreAlarms();
+    this.emitChange();
   }
 
   async persist() {
-    await chrome.storage.local.set({ [JOBS_KEY]: this.jobs });
+    await chrome.storage.local.set({ [JOBS_KEY]: this.jobs, [TIMERS_KEY]: this.timerToJob });
   }
 
   listJobs() {
     return Object.values(this.jobs);
-  }
-
-  getJob(jobId) {
-    return this.jobs[jobId] || null;
   }
 
   async startJob({ tabIds, intervalMs, randomize = false, randomMinMs = null, randomMaxMs = null, name }) {
@@ -43,7 +39,6 @@ export class RefreshManager {
 
     const now = Date.now();
     const jobId = this.buildJobId(name || 'scope', normalizedTabIds);
-    const nextInterval = this.resolveInterval(intervalMs, randomize, randomMinMs, randomMaxMs);
 
     this.jobs[jobId] = {
       id: jobId,
@@ -55,29 +50,46 @@ export class RefreshManager {
       randomMaxMs,
       status: 'running',
       lastRunAt: null,
-      nextRunAt: now + nextInterval
+      nextRunAt: now + intervalMs
     };
 
-    await this.persist();
-    await this.scheduleAlarm(jobId, this.jobs[jobId].nextRunAt);
-    this.ensureTicking();
-    this.emitChange();
+    for (const tabId of normalizedTabIds) {
+      this.timerToJob[String(tabId)] = {
+        interval: intervalMs,
+        scope: this.resolveScopeName(name),
+        jobId
+      };
+      await this.createTabAlarm(tabId, intervalMs);
+    }
 
+    await this.persist();
+    this.emitChange();
     return this.jobs[jobId];
   }
 
   async stopJob(jobId) {
-    if (!this.jobs[jobId]) return;
-    this.jobs[jobId].status = 'stopped';
-    this.jobs[jobId].nextRunAt = null;
-    await chrome.alarms.clear(this.alarmName(jobId));
+    const job = this.jobs[jobId];
+    if (!job) return;
+
+    job.status = 'stopped';
+    job.nextRunAt = null;
+    for (const tabId of job.tabIds) {
+      await chrome.alarms.clear(this.alarmName(tabId));
+    }
     await this.persist();
     this.emitChange();
   }
 
   async removeJob(jobId) {
+    const job = this.jobs[jobId];
+    if (!job) return;
+
+    for (const tabId of job.tabIds) {
+      await chrome.alarms.clear(this.alarmName(tabId));
+      delete this.timerToJob[String(tabId)];
+    }
+
     delete this.jobs[jobId];
-    await chrome.alarms.clear(this.alarmName(jobId));
     await this.persist();
     this.emitChange();
   }
@@ -85,76 +97,51 @@ export class RefreshManager {
   async restartJob(jobId) {
     const job = this.jobs[jobId];
     if (!job) return;
+
     job.status = 'running';
-    job.nextRunAt = Date.now() + this.resolveInterval(job.intervalMs, job.randomize, job.randomMinMs, job.randomMaxMs);
-    await this.scheduleAlarm(jobId, job.nextRunAt);
+    const nextInterval = this.resolveInterval(job.intervalMs, job.randomize, job.randomMinMs, job.randomMaxMs);
+    job.nextRunAt = Date.now() + nextInterval;
+
+    for (const tabId of job.tabIds) {
+      await this.createTabAlarm(tabId, nextInterval);
+    }
+
     await this.persist();
     this.emitChange();
   }
 
   async handleAlarm(alarm) {
-    if (!alarm?.name?.startsWith('refresh:')) return;
-    const jobId = alarm.name.replace('refresh:', '');
-    await this.runJob(jobId);
+    if (!alarm?.name?.startsWith('refresh_')) return;
+    const tabId = Number.parseInt(alarm.name.split('_')[1], 10);
+    if (!Number.isInteger(tabId)) return;
+    await this.runTab(tabId);
   }
 
-  async runJob(jobId) {
-    const job = this.jobs[jobId];
+  async runTab(tabId) {
+    const timerInfo = this.timerToJob[String(tabId)];
+    if (!timerInfo?.jobId) return;
+
+    const job = this.jobs[timerInfo.jobId];
     if (!job || job.status !== 'running') return;
 
-    const tabs = await TabManager.listTabs({});
-    const existingTabIds = new Set(tabs.filter((t) => !!t.id).map((t) => t.id));
-    job.tabIds = job.tabIds.filter((tabId) => existingTabIds.has(tabId));
+    try {
+      const tab = await TabManager.getTab(tabId);
+      if (!tab?.id) return;
 
-    if (!job.tabIds.length) {
-      await this.removeJob(jobId);
-      return;
-    }
+      const settings = this.getSettings();
+      const pauseInBackground = !!settings.pauseBackgroundRefresh;
+      if (pauseInBackground && !tab.active) return;
 
-    const settings = this.getSettings();
-    const progressiveDelayMs = Math.max(0, Number(settings.progressiveDelayMs) || 0);
-    const pauseInBackground = !!settings.pauseBackgroundRefresh;
+      await chrome.tabs.reload(tabId);
+      job.lastRunAt = Date.now();
+      const nextInterval = this.resolveInterval(job.intervalMs, job.randomize, job.randomMinMs, job.randomMaxMs);
+      job.nextRunAt = job.lastRunAt + nextInterval;
 
-    for (let index = 0; index < job.tabIds.length; index += 1) {
-      const tabId = job.tabIds[index];
-      if (pauseInBackground) {
-        try {
-          const tab = await TabManager.getTab(tabId);
-          if (!tab.active) continue;
-        } catch {
-          continue;
-        }
-      }
-
-      await this.enqueueRefresh(tabId);
-      if (progressiveDelayMs > 0 && index < job.tabIds.length - 1) {
-        await this.sleep(progressiveDelayMs * (index + 1));
-      }
-    }
-
-    job.lastRunAt = Date.now();
-    const nextInterval = this.resolveInterval(job.intervalMs, job.randomize, job.randomMinMs, job.randomMaxMs);
-    job.nextRunAt = job.lastRunAt + nextInterval;
-    await this.persist();
-    await this.scheduleAlarm(jobId, job.nextRunAt);
-    this.emitChange();
-  }
-
-  async enqueueRefresh(tabId) {
-    const queue = this.pendingByTab.get('global') || [];
-    queue.push(tabId);
-    this.pendingByTab.set('global', queue);
-    if (!this.processingQueue) {
-      this.processingQueue = true;
-      while ((this.pendingByTab.get('global') || []).length) {
-        const nextTabId = this.pendingByTab.get('global').shift();
-        try {
-          await chrome.tabs.reload(nextTabId, { bypassCache: false });
-        } catch (error) {
-          console.warn(`Falha no reload da aba ${nextTabId}:`, error);
-        }
-      }
-      this.processingQueue = false;
+      await this.createTabAlarm(tabId, nextInterval);
+      await this.persist();
+      this.emitChange();
+    } catch (error) {
+      console.warn(`Falha no reload da aba ${tabId}:`, error);
     }
   }
 
@@ -173,22 +160,24 @@ export class RefreshManager {
 
   async restoreAlarms() {
     for (const job of this.listJobs()) {
-      if (job.status !== 'running' || !job.nextRunAt) continue;
-      if (job.nextRunAt <= Date.now()) {
-        await this.runJob(job.id);
-      } else {
-        await this.scheduleAlarm(job.id, job.nextRunAt);
+      if (job.status !== 'running') continue;
+      for (const tabId of job.tabIds) {
+        const nextInterval = this.resolveInterval(job.intervalMs, job.randomize, job.randomMinMs, job.randomMaxMs);
+        await this.createTabAlarm(tabId, nextInterval);
       }
     }
   }
 
-  async scheduleAlarm(jobId, runAtMs) {
-    const when = Math.max(runAtMs, Date.now() + 60 * 1000);
-    await chrome.alarms.create(this.alarmName(jobId), { when });
+  async createTabAlarm(tabId, intervalMs) {
+    const intervalMinutes = Math.max(0.5, intervalMs / 60000);
+    await chrome.alarms.create(this.alarmName(tabId), {
+      delayInMinutes: intervalMinutes,
+      periodInMinutes: intervalMinutes
+    });
   }
 
-  alarmName(jobId) {
-    return `refresh:${jobId}`;
+  alarmName(tabId) {
+    return `refresh_${tabId}`;
   }
 
   resolveInterval(intervalMs, randomize, randomMinMs, randomMaxMs) {
@@ -211,18 +200,14 @@ export class RefreshManager {
     return `job_${Math.abs(hash)}`;
   }
 
-  ensureTicking() {
-    if (this.tickTimer) return;
-    this.tickTimer = setInterval(() => this.emitChange(), 1000);
+  resolveScopeName(name) {
+    if (name === 'current' || name === 'domain' || name === 'all') return name;
+    return 'tab';
   }
 
   emitChange() {
     if (typeof this.onStateChanged === 'function') {
       this.onStateChanged(this.getCountdowns());
     }
-  }
-
-  sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
