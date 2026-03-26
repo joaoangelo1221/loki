@@ -174,19 +174,23 @@ elements.advancedToggle.addEventListener('click', () => {
 });
 
 async function runClean(scope) {
-  const types = {
-    cache: elements.cleanCache.checked,
-    cookies: elements.cleanCookies.checked,
-    localStorage: elements.cleanLocalStorage.checked,
-    sessionStorage: elements.cleanSessionStorage.checked
-  };
-  await sendMessage('CLEAN_DATA', { scope, types });
-  setStatus(`Limpeza concluída no escopo: ${scope}.`);
+  try {
+    const types = {
+      cache: elements.cleanCache.checked,
+      cookies: elements.cleanCookies.checked,
+      localStorage: elements.cleanLocalStorage.checked,
+      sessionStorage: elements.cleanSessionStorage.checked
+    };
+    await sendMessage('CLEAN_DATA', { scope, types });
+    setStatus(`Limpeza concluída no escopo: ${scope}.`);
+  } catch (error) {
+    setStatus(error.message, true);
+  }
 }
 
-elements.cleanCurrent.addEventListener('click', () => runClean('current').catch((e) => setStatus(e.message, true)));
-elements.cleanDomain.addEventListener('click', () => runClean('domain').catch((e) => setStatus(e.message, true)));
-elements.cleanAll.addEventListener('click', () => runClean('all').catch((e) => setStatus(e.message, true)));
+elements.cleanCurrent.addEventListener('click', () => runClean('current'));
+elements.cleanDomain.addEventListener('click', () => runClean('domain'));
+elements.cleanAll.addEventListener('click', () => runClean('all'));
 
 elements.memoryBtn.addEventListener('click', async () => {
   try {
@@ -208,4 +212,3 @@ chrome.runtime.onMessage.addListener((message) => {
 });
 
 refreshState();
-setInterval(refreshState, 5000);
