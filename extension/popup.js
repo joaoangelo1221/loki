@@ -7,16 +7,13 @@ const elements = {
   stopAllBtn: document.getElementById('stopAllBtn'),
   advancedToggle: document.getElementById('advancedToggle'),
   advancedPanel: document.getElementById('advancedPanel'),
-  randomizeCheck: document.getElementById('randomizeCheck'),
-  randomMin: document.getElementById('randomMin'),
-  randomMax: document.getElementById('randomMax'),
-  cleanCache: document.getElementById('cleanCache'),
-  cleanCookies: document.getElementById('cleanCookies'),
-  cleanLocalStorage: document.getElementById('cleanLocalStorage'),
-  cleanSessionStorage: document.getElementById('cleanSessionStorage'),
-  cleanCurrent: document.getElementById('cleanCurrent'),
-  cleanDomain: document.getElementById('cleanDomain'),
-  cleanAll: document.getElementById('cleanAll'),
+  cache: document.getElementById('cache'),
+  cookies: document.getElementById('cookies'),
+  localStorage: document.getElementById('localStorage'),
+  sessionStorage: document.getElementById('sessionStorage'),
+  clearTab: document.getElementById('clearTab'),
+  clearDomain: document.getElementById('clearDomain'),
+  clearAll: document.getElementById('clearAll'),
   memoryBtn: document.getElementById('memoryBtn'),
   status: document.getElementById('status'),
   jobs: document.getElementById('jobs')
@@ -75,6 +72,37 @@ function getSelectedTabIds() {
   return [...elements.selectedTabsContainer.querySelectorAll('input[type="checkbox"]:checked')].map((el) =>
     Number(el.value)
   );
+}
+
+function getSelectedOptions() {
+  return {
+    cache: elements.cache.checked,
+    cookies: elements.cookies.checked,
+    localStorage: elements.localStorage.checked,
+    sessionStorage: elements.sessionStorage.checked
+  };
+}
+
+function buildExplanation(scope) {
+  const opts = getSelectedOptions();
+  const selected = [];
+
+  if (opts.cache) selected.push('cache');
+  if (opts.cookies) selected.push('cookies');
+  if (opts.localStorage) selected.push('armazenamento local');
+  if (opts.sessionStorage) selected.push('dados de sessão');
+
+  if (selected.length === 0) {
+    return 'Nenhuma opção selecionada.';
+  }
+
+  return `Limpar ${selected.join(', ')} da ${scope}. Isso irá remover dados armazenados, podendo desconectar sessões e apagar preferências locais.`;
+}
+
+function updateCleanTooltips() {
+  elements.clearTab.title = buildExplanation('aba atual');
+  elements.clearDomain.title = buildExplanation('domínio atual');
+  elements.clearAll.title = buildExplanation('todo o navegador');
 }
 
 function renderJobs(jobs) {
@@ -184,21 +212,12 @@ elements.advancedToggle.addEventListener('click', () => {
 });
 
 async function runClean(scope) {
-  if (
-    !confirm(
-      'Tem certeza que deseja executar esta ação? Esta operação pode remover dados importantes.'
-    )
-  ) {
-    return;
-  }
+  const scopeLabel = scope === 'current' ? 'aba atual' : scope === 'domain' ? 'domínio atual' : 'todo o navegador';
+  const msg = buildExplanation(scopeLabel);
+  if (!confirm(`${msg}\n\nDeseja continuar?`)) return;
 
   try {
-    const types = {
-      cache: elements.cleanCache.checked,
-      cookies: elements.cleanCookies.checked,
-      localStorage: elements.cleanLocalStorage.checked,
-      sessionStorage: elements.cleanSessionStorage.checked
-    };
+    const types = getSelectedOptions();
     await sendMessage('CLEAN_DATA', { scope, types });
     setStatus(`Limpeza concluída no escopo: ${scope}.`);
   } catch (error) {
@@ -206,9 +225,9 @@ async function runClean(scope) {
   }
 }
 
-elements.cleanCurrent.addEventListener('click', () => runClean('current'));
-elements.cleanDomain.addEventListener('click', () => runClean('domain'));
-elements.cleanAll.addEventListener('click', () => runClean('all'));
+elements.clearTab.addEventListener('click', () => runClean('current'));
+elements.clearDomain.addEventListener('click', () => runClean('domain'));
+elements.clearAll.addEventListener('click', () => runClean('all'));
 
 elements.memoryBtn.addEventListener('click', async () => {
   if (
@@ -237,4 +256,9 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 });
 
+['cache', 'cookies', 'localStorage', 'sessionStorage'].forEach((id) => {
+  elements[id].addEventListener('change', updateCleanTooltips);
+});
+
+updateCleanTooltips();
 refreshState();
